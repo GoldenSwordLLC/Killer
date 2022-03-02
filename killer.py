@@ -31,7 +31,7 @@ import sys
 import time
 from pathlib import Path
 from helpers import detect_bt, detect_tray, detect_ac, detect_battery, detect_usb, detect_ethernet
-from config import sleep_length
+from config import sleep_length, debug_enable
 
 __author__ = "Lvl4Sword, GhostOfGoes, MarkKoz"
 __license__ = "AGPL 3.0"
@@ -48,6 +48,11 @@ _____________________________________
  `.                  ___|____________/
    ``````````````````
 """
+if debug_enable:
+    DEBUG = True
+else:
+    DEBUG = False
+
 power_last_modified = {}
 
 
@@ -83,6 +88,15 @@ def _load_config(self, config_path: str = None):
         config = json.loads(data.decode())
 
 
+def checks():
+    detect_bt()
+    detect_tray()
+    detect_ac()
+    detect_battery()
+    detect_usb()
+    detect_ethernet()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog="Killer")
     parser.add_argument("--version", action="version",
@@ -99,12 +113,7 @@ if __name__ == '__main__':
         print(LOGO)
 
     while True:
-        detect_bt()
-        detect_tray()
-        detect_ac()
-        detect_battery()
-        detect_usb()
-        detect_ethernet()
+        checks()
         if DEBUG:
             break
         else:

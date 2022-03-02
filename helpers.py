@@ -10,9 +10,10 @@ import subprocess
 import time
 from email.mime.text import MIMEText
 from pathlib import Path
+import usb
 from config import ac_file, usb_id_whitelist, usb_connected_whitelist, cdrom_drive, battery_file
 from config import ethernet_connected_file, bluetooth_paired_whitelist, bluetooth_connected_whitelist, smtp_server
-from config import smtp_port, sender, destination, sender_password, cipher_choice, login_auth
+from config import smtp_port, email_sender, email_destination, sender_password, cipher_choice, login_auth
 from config import log_file, debug_enable
 
 log = logging.getLogger('Base')
@@ -24,17 +25,12 @@ BT_MAC_REGEX = re.compile(r"(?:[0-9a-fA-F]:?){12}")
 BT_PAIRED_REGEX = re.compile(r"(Paired: [0-1])")
 BT_NAME_REGEX = re.compile(r"[0-9A-Za-z ]+(?=\s\()")
 BT_CONNECTED_REGEX = re.compile(r"(Connected: [0-1])")
-USB_ID_REGEX = re.compile(r"([0-9a-fA-F]{4}:[0-9a-fA-F]{4})")
 
 POWER_PATH = Path('/sys/class/power_supply')
 POWER_DEVICE_TYPES = ['Battery', 'Mains', 'UPS', 'USB']
 
 LOG = logging.getLogger('POSIX')
-
-if debug_enable:
-    DEBUG = True
-else:
-    DEBUG = False
+usb_ids = {}
 
 
 def detect_bt():
@@ -73,22 +69,31 @@ def detect_bt():
 
 
 def detect_usb():
-    ids = re.findall(USB_ID_REGEX, subprocess.check_output("lsusb", shell=False).decode())
-    if ids:
-        log.debug('USB:', ', '.join(ids))
-    else:
-        log.debug('USB: none detected')
-
-    for each_device in ids:
-        if each_device not in usb_id_whitelist:
-            kill_the_system('USB Allowed Whitelist: {0}'.format(each_device))
+    for dev in usb.core.find(find_all=True):
+        this_device = f"{hex(dev.idVendor)[2:]:0>4}:{hex(dev.idProduct)[2:]:0>4}"
+        if this_device in usb_ids:
+            usb_ids[this_device]['amount'] += 1
         else:
-            if usb_id_whitelist[each_device] != ids.count(each_device):
-                kill_the_system('USB Duplicate Device: {0}'.format(each_device))
+            usb_ids[this_device] = {}
+            usb_ids[this_device]['amount'] = 1
+    if DEBUG:
+        if usb_ids:
+            log.debug('USB:', ', '.join(usb_ids))
+        else:
+            log.debug('USB: none detected')
 
-    for device in usb_connected_whitelist:
-        if device not in ids:
-            kill_the_system('USB Connected Whitelist: {0}'.format(device))
+    for each_device in usb_ids:
+        if each_device not in usb_id_whitelist:
+            kill_the_system(f'USB Allowed Whitelist: {each_device}')
+        else:
+            if usb_id_whitelist[each_device] != usb_ids.count(each_device):
+                kill_the_system(f'USB Duplicate Device: {each_device}')
+            else:
+                if each_device not in usb_connected_whitelist:
+                    kill_the_system(f'USB Connected Whitelist: {each_device}')
+                else:
+                    if usb_connected_whitelist[each_device] != usb_ids.count(each_device):
+                        kill_the_system(f'USB Duplicate Device: {each_device}')
 
 
 def detect_ac():
@@ -155,8 +160,7 @@ def kill_the_system(warning: str):
 
 # TODO - Get Jinja templating setup for this
 def mail_this(warning: str):
-    email_config = config["email"]
-    subject = '[ALERT: {0}]'.format(warning)
+    subject = f'[ALERT: {warning}]'
 
     current_time = time.localtime()
     formatted_time = time.strftime('%Y-%m-%d %I:%M:%S%p', current_time)
@@ -164,11 +168,11 @@ def mail_this(warning: str):
     content = 'Time: {0}\nWarning: {1}'.format(formatted_time, warning)
     msg = MIMEText(content, 'plain')
     msg['Subject'] = subject
-    msg['From'] = email_config["sender"]
+    msg['From'] = email_sender
     ssl_context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
     ssl_context.verify_mode = ssl.CERT_REQUIRED
     ssl_context.check_hostname = True
-    ssl_context.set_ciphers(email_config["cipher_choice"])
+    ssl_context.set_ciphers(cipher_choice)
     ssl_context.options |= ssl.HAS_SNI
     ssl_context.options |= ssl.OP_NO_COMPRESSION
     # No need to explicitly disable SSLv* as it's already been done
@@ -177,14 +181,14 @@ def mail_this(warning: str):
     ssl_context.options |= ssl.OP_NO_TLSv1_1
     ssl_context.options |= ssl.OP_SINGLE_DH_USE
     ssl_context.options |= ssl.OP_SINGLE_ECDH_USE
-    conn = smtplib.SMTP_SSL(email_config["smtp_server"],
-                            port=email_config["smtp_port"],
+    conn = smtplib.SMTP_SSL(smtp_server,
+                            port=smtp_port,
                             context=ssl_context)
-    conn.esmtp_features['auth'] = email_config["login_auth"]
-    conn.login(email_config["sender"], email_config["sender_password"])
+    conn.esmtp_features['auth'] = login_auth
+    conn.login(email_sender, sender_password)
     try:
-        for each in json.loads(email_config["destination"]):
-            conn.sendmail(email_config["sender"], each, msg.as_string())
+        for each in json.loads(email_destination):
+            conn.sendmail(email_sender, each, msg.as_string())
     except socket.timeout:
         raise socket.gaierror
     finally:

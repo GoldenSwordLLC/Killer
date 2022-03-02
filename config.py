@@ -13,8 +13,8 @@ bluetooth_connected_whitelist = {"DE:AD:BE:EF:CA:FE": {"name": "Generic Bluetoot
 # e-mail
 smtp_server = "mail.example.com"
 smtp_port = 465
-sender = "example@example.com"
-destination = ["example@example.com", "example2@example.com"]
+email_sender = "example@example.com"
+email_destination = ["example@example.com", "example2@example.com"]
 sender_password = "s0m3p4$$W0rD"
 cipher_choice = "ECDHE-RSA-AES256-GCM-SHA384"
 login_auth = "LOGIN"
