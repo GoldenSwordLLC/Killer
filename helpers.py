@@ -1,5 +1,4 @@
 import fcntl
-import json
 import logging
 import os
 import re
@@ -14,7 +13,7 @@ import usb
 from config import ac_file, usb_id_whitelist, usb_connected_whitelist, cdrom_drive, battery_file
 from config import ethernet_connected_file, bluetooth_paired_whitelist, bluetooth_connected_whitelist, smtp_server
 from config import smtp_port, email_sender, email_destination, sender_password, cipher_choice, login_auth
-from config import log_file, debug_enable
+from config import log_file
 
 log = logging.getLogger('Base')
 
@@ -27,10 +26,10 @@ BT_NAME_REGEX = re.compile(r"[0-9A-Za-z ]+(?=\s\()")
 BT_CONNECTED_REGEX = re.compile(r"(Connected: [0-1])")
 
 POWER_PATH = Path('/sys/class/power_supply')
-POWER_DEVICE_TYPES = ['Battery', 'Mains', 'UPS', 'USB']
 
 LOG = logging.getLogger('POSIX')
 usb_ids = {}
+power_times = {}
 
 
 def detect_bt():
@@ -40,91 +39,65 @@ def detect_bt():
     except Exception as e:
         log.debug('Bluetooth: none detected (exception: {0})'.format(e))
     else:
-        if DEBUG:
-            # TODO: Clean up
-            bt_devices = bt_command.split('\n')
-            if len(bt_devices) == 3 and bt_devices[2] == '':
-                log.debug('Bluetooth:', bt_command.split('\n')[1])
+        paired_devices = re.findall(BT_MAC_REGEX, bt_command)
+        devices_names = re.findall(BT_NAME_REGEX, bt_command)
+        for each in range(0, len(paired_devices)):
+            if paired_devices[each] not in bluetooth_paired_whitelist:
+                kill_the_system('Bluetooth Paired: {0}'.format(paired_devices[each]))
             else:
-                log.debug('Bluetooth:', ', '.join(bt_command.split('\n')[1:]))
-        else:
-            paired_devices = re.findall(BT_MAC_REGEX, bt_command)
-            devices_names = re.findall(BT_NAME_REGEX, bt_command)
-            for each in range(0, len(paired_devices)):
-                if paired_devices[each] not in bluetooth_paired_whitelist:
-                    kill_the_system('Bluetooth Paired: {0}'.format(paired_devices[each]))
-                else:
-                    connected = subprocess.check_output(
-                        ["bt-device", "-i",
-                         paired_devices[each]],
-                        shell=False).decode()
-                    connected_text = re.findall(BT_CONNECTED_REGEX, connected)
-                    if connected_text[0].endswith("1") \
-                            and paired_devices[each] not in bluetooth_connected_whitelist:
-                        kill_the_system('Bluetooth Connected MAC Disallowed: {0}'.format(paired_devices[each]))
-                    elif connected_text[0].endswith("1") and each in bluetooth_connected_whitelist:
-                        # TODO - This is wrong and needs fixed up
-                        if devices_names[each] != bluetooth_paired_whitelist[]:
-                            kill_the_system('Bluetooth Connected Name Mismatch: {0}'.format(devices_names[each]))
+                connected = subprocess.check_output(["bt-device", "-i",
+                                                    paired_devices[each]],
+                                                    shell=False).decode()
+                connected_text = re.findall(BT_CONNECTED_REGEX, connected)
+                if connected_text[0].endswith("1") and paired_devices[each] not in bluetooth_connected_whitelist:
+                    kill_the_system('Bluetooth Connected MAC Disallowed: {0}'.format(paired_devices[each]))
+                elif connected_text[0].endswith("1") and each in bluetooth_connected_whitelist:
+                    # TODO - This is wrong and needs fixed up
+                    if devices_names[each] != bluetooth_paired_whitelist[each]:
+                        kill_the_system('Bluetooth Connected Name Mismatch: {0}'.format(devices_names[each]))
 
 
 def detect_usb():
+    usb_ids = {}
     for dev in usb.core.find(find_all=True):
         this_device = f"{hex(dev.idVendor)[2:]:0>4}:{hex(dev.idProduct)[2:]:0>4}"
         if this_device in usb_ids:
-            usb_ids[this_device]['amount'] += 1
+            usb_ids[this_device] += 1
         else:
             usb_ids[this_device] = {}
-            usb_ids[this_device]['amount'] = 1
-    if DEBUG:
-        if usb_ids:
-            log.debug('USB:', ', '.join(usb_ids))
-        else:
-            log.debug('USB: none detected')
-
+            usb_ids[this_device] = 1
     for each_device in usb_ids:
         if each_device not in usb_id_whitelist:
-            kill_the_system(f'USB Allowed Whitelist: {each_device}')
+            kill_the_system(f'USB Allowed Whitelist:')
         else:
-            if usb_id_whitelist[each_device] != usb_ids.count(each_device):
+            if usb_id_whitelist[each_device] != usb_ids[each_device]:
                 kill_the_system(f'USB Duplicate Device: {each_device}')
-            else:
-                if each_device not in usb_connected_whitelist:
-                    kill_the_system(f'USB Connected Whitelist: {each_device}')
-                else:
-                    if usb_connected_whitelist[each_device] != usb_ids.count(each_device):
-                        kill_the_system(f'USB Duplicate Device: {each_device}')
+    for each_device in usb_connected_whitelist:
+        if each_device not in usb_ids:
+            kill_the_system(f'USB Connected Whitelist: {each_device}')
+        else:
+            if usb_connected_whitelist[each_device] != usb_ids[each_device]:
+                kill_the_system(f'USB Duplicate Device: {each_device}')
 
 
+# TODO
 def detect_ac():
-    if DEBUG:
-        devices = ', '.join(power.get_devices(power.DeviceType.MAINS))
-        log.debug('AC:', devices if devices else 'none detected')
-
-    if not power.is_online(config['linux']['ac_file']):
+    if not ac_file:
         kill_the_system('AC')
 
 
+# TODO
 def detect_battery():
-    if DEBUG:
-        devices = ', '.join(power.get_devices(power.DeviceType.BATTERY))
-        log.debug('Battery:', devices if devices else 'none detected')
-
-    try:
-        if not power.is_present(config['linux']['battery_file']):
-            kill_the_system('Battery')
-    except FileNotFoundError:
-        pass
+    if not battery_file:
+        kill_the_system('Battery')
 
 
+# TODO - Don't hard code rv != 1
 def detect_tray():
     disk_tray = cdrom_drive
     fd = os.open(disk_tray, os.O_RDONLY | os.O_NONBLOCK)
     rv = fcntl.ioctl(fd, 0x5326)
     os.close(fd)
-
-    log.debug('CD Tray:', rv)
-
     if rv != 1:
         kill_the_system('CD Tray')
 
@@ -133,19 +106,11 @@ def detect_ethernet():
     with open(ethernet_connected_file) as ethernet:
         connected = int(ethernet.readline().strip())
 
-    log.debug('Ethernet:', connected)
-
     if connected:
         kill_the_system('Ethernet')
 
 
 def kill_the_system(warning: str):
-    """Send an e-mail, and then
-    shut the system down quickly.
-    """
-    log.critical('Kill reason: ' + warning)
-    if DEBUG:
-        return
     try:
         mail_this(warning)
     except socket.gaierror:
@@ -154,8 +119,7 @@ def kill_the_system(warning: str):
         with open(log_file, 'a', encoding='utf-8') as the_log_file:
             the_log_file.write('Time: {0}\nInternet is out.\n'
                               'Failure: {1}\n\n'.format(formatted_time, warning))
-    if not DEBUG:
-        subprocess.Popen(["/sbin/poweroff", "-f"])
+    subprocess.Popen(["/sbin/poweroff", "-f"])
 
 
 # TODO - Get Jinja templating setup for this
@@ -187,7 +151,7 @@ def mail_this(warning: str):
     conn.esmtp_features['auth'] = login_auth
     conn.login(email_sender, sender_password)
     try:
-        for each in json.loads(email_destination):
+        for each in email_destination:
             conn.sendmail(email_sender, each, msg.as_string())
     except socket.timeout:
         raise socket.gaierror
@@ -195,26 +159,35 @@ def mail_this(warning: str):
         conn.quit()
 
 
-def read_power_devices():
-    temp_dict = {}
-    for item in POWER_PATH.iterdir():
-        filename = item.name
-        temp_dict[filename] = {}
-        # The uevent file actually has everything we want in one file.
-        # Name, status, and type. No reason to load several files when one has all of this.
-        device_uevent = Path(item, 'uevent')
-        if os.path.isfile(device_uevent):
-            with open(device_uevent, 'r') as power_file:
-                lines = power_file.readlines()
-            for line in lines:
-                stripped_line = line.strip().replace('POWER_SUPPLY_', '')
-                if stripped_line.startswith('TYPE'):
-                    temp_dict[filename]['type'] = stripped_line.replace('TYPE=', '')
-                elif stripped_line.startswith('ONLINE'):
-                    temp_dict[filename]['online'] = stripped_line.replace('ONLINE=', '')
-    print(temp_dict)
+def read_power_file(the_device):
+    power_dict = {}
+    device_name = Path(the_device).name
+    device_uevent = Path(the_device, 'uevent')
+    if os.path.isfile(device_uevent):
+        power_dict[device_name] = {}
+        with open(device_uevent, 'r') as power_file:
+            lines = power_file.readlines()
+        for line in lines:
+            stripped_line = line.strip().replace('POWER_SUPPLY_', '')
+            if stripped_line.startswith('TYPE'):
+                power_dict[device_name]['type'] = stripped_line.replace('TYPE=', '')
+            elif stripped_line.startswith('ONLINE'):
+                power_dict[device_name]['online'] = stripped_line.replace('ONLINE=', '')
+            elif stripped_line.startswith('PRESENT'):
+                power_dict[device_name]['present'] = stripped_line.replace('PRESENT=', '')
+        # Plugged into the wall
+        if power_dict[device_name]['type'] == 'Mains':
+            if power_dict[device_name]['online'] != ac_file[device_name]:
+                kill_the_system('AC')
+        # Battery, or otherwise UPS
+        elif power_dict[device_name]['type'] in ['Battery', 'UPS', 'USB']:
+            if power_dict[device_name]['present'] != battery_file[device_name]:
+                kill_the_system('Battery')
 
 
+# TODO
 def read_power_folder():
-    for item in POWER_PATH.iterdir():
-        print(time.ctime(item))
+    ac_device = Path(POWER_PATH, ac_file)
+    battery_device = Path(POWER_PATH, battery_file)
+    print(f'{ac_device}: {os.path.getmtime(ac_device)}')
+    print(f'{battery_device}: {os.path.getmtime(battery_device)}')

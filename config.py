@@ -1,9 +1,11 @@
 # linux
-ac_file = "/sys/class/power_supply/RUN_DEBUG"
+# 1 defines present, 0 defines not present
+ac_file = {'AC': 1}
 usb_id_whitelist = {"DEAD:BEEF": 1}
 usb_connected_whitelist = {"DEAD:BEEF": 1}
 cdrom_drive = "/dev/sr0"
-battery_file = "/sys/class/power_supply/RUN_DEBUG"
+# 1 defines present, 0 defines not present
+battery_file = {'BAT1': 1}
 ethernet_connected_file = "/sys/class/net/RUN_DEBUG/carrier"
 
 # bluetooth
