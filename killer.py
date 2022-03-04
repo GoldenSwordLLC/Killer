@@ -25,6 +25,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 import argparse
 import os
+import sys
 import time
 from pathlib import Path
 from config import sleep_length, debug_enable
@@ -72,8 +73,12 @@ if __name__ == '__main__':
         DEBUG = False
 
     script_directory = Path(__file__).parent
-    if os.path.isfile(script_directory, 'config.py'):
+    config_file = Path(script_directory, 'config.py')
+    if os.path.isfile(config_file):
         helpers.verify_config()
+    else:
+        print(f'{config_file} does not exist')
+        sys.exit(1)
 
     while True:
         if DEBUG:

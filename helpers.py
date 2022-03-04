@@ -6,6 +6,7 @@ import smtplib
 import socket
 import ssl
 import subprocess
+import sys
 import time
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -31,7 +32,7 @@ def detect_bt():
         bt_command = subprocess.check_output(["bt-device", "--list"],
                                              shell=False).decode()
     except Exception as e:
-        log.debug('Bluetooth: none detected (exception: {0})'.format(e))
+        print(f'Bluetooth: none detected (exception: {str(e)})')
     else:
         paired_devices = re.findall(BT_MAC_REGEX, bt_command)
         devices_names = re.findall(BT_NAME_REGEX, bt_command)
@@ -189,38 +190,38 @@ def read_power_folder():
 
 def verify_config():
     config_good = None
-    config_info = {'ac_file': dict,
-                   'usb_id_whitelist': dict,
-                   'usb_connected_whitelist': dict,
-                   'cdrom_drive': str,
-                   'battery_file': dict,
-                   'ethernet_connected_file': str,
-                   'bluetooth_paired_whitelist': dict,
-                   'bluetooth_connected_whitelist': dict,
-                   'smtp_server': str,
-                   'smtp_port': int,
-                   'email_sender': str,
-                   'email_destination': list,
-                   'sender_password': str,
-                   'cipher_choice': str,
-                   'login_auth': str,
-                   'sleep_length': float,
-                   'log_file': str,
-                   'debug_enable': int}
-    dictionary_info = {'ac_file': {'type': 'simple', 'key': str, 'value': int},
-                       'usb_id_whitelist': {'type': 'simple', 'key': str, 'value': int},
-                       'usb_connected_whitelist': {'type': 'simple', 'key': str, 'value': int},
-                       'battery_file': {'type': 'simple', 'key': str, 'value': int},
+    config_info = {'ac_file': {},
+                   'usb_id_whitelist': {},
+                   'usb_connected_whitelist': {},
+                   'cdrom_drive': 'STRING',
+                   'battery_file': {},
+                   'ethernet_connected_file': 'STRING',
+                   'bluetooth_paired_whitelist': {},
+                   'bluetooth_connected_whitelist': {},
+                   'smtp_server': 'STRING',
+                   'smtp_port': 0,
+                   'email_sender': 'STRING',
+                   'email_destination': [],
+                   'sender_password': 'STRING',
+                   'cipher_choice': 'STRING',
+                   'login_auth': 'STRING',
+                   'sleep_length': 1.0,
+                   'log_file': 'STRING',
+                   'debug_enable': 1}
+    dictionary_info = {'ac_file': {'type': 'simple', 'key': 'STRING', 'value': 0},
+                       'usb_id_whitelist': {'type': 'simple', 'key': 'STRING', 'value': 0},
+                       'usb_connected_whitelist': {'type': 'simple', 'key': 'STRING', 'value': 0},
+                       'battery_file': {'type': 'simple', 'key': 'STRING', 'value': 0},
                        # all uppercase keys are user set, so aren't actually "USER_SET"
                        'bluetooth_paired_whitelist': {'type': 'nested',
-                                                      'outer_keys': {"USER_SET": str},
+                                                      'outer_keys': {"USER_SET": 'STRING'},
                                                       'inner_keys': ['name', 'amount'],
-                                                      'values': {'name': str, 'amount': int}},
+                                                      'values': {'name': 'STRING', 'amount': 0}},
                        'bluetooth_connected_whitelist': {'type': 'nested',
-                                                      'outer_keys': {"USER_SET": str},
-                                                      'inner_keys': ['name', 'amount'],
-                                                      'values': {'name': str, 'amount': int}}}
-    list_info = {'email_destination': str}
+                                                         'outer_keys': {"USER_SET": 'STRING'},
+                                                         'inner_keys': ['name', 'amount'],
+                                                         'values': {'name': 'STRING', 'amount': 0}}}
+    list_info = {'email_destination': 'STRING'}
     config_variables = {"ac_file": ac_file, "usb_id_whitelist": usb_id_whitelist,
                         "usb_connected_whitelist": usb_connected_whitelist, "cdrom_drive": cdrom_drive,
                         "battery_file": battery_file, "ethernet_connected_file": ethernet_connected_file,
@@ -231,13 +232,25 @@ def verify_config():
                         "cipher_choice": cipher_choice, "login_auth": login_auth, "log_file": log_file}
     for variable in config_variables:
         # See if the variable is actually what we expect
-        if isinstance(config_variables[variable], config_info[variable]):
+        if isinstance(config_variables[variable], type(config_info[variable])):
             if isinstance(config_info[variable], dict):
+                # a simple dict is a non-nested dict like a = {'b': 'c'}
                 if dictionary_info[variable]['type'] == 'simple':
+                    if dictionary_info[variable]['key'] == 'STRING':
+                        if not isinstance(list(config_variables[variable].keys())[0], str):
+                            item = list(config_variables[variable].keys())[0]
+                            item_type = type(list(config_variables[variable].keys())[0])
+                            print(f'{item} is of type {item_type} rather than the expected string')
+                            config_good = False
+                # nested dict is, well, a nested dict like a = {'b': {'c': 'd'}}
                 elif dictionary_info[variable]['type'] == 'nested':
+                    print('nested dict')
             elif isinstance(config_info[variable], list):
+                print('list')
         else:
-            print(f'{variable} is {type(config_variables[variable])} rather than the expected {config_info[variable]}')
+            variable_type = type(config_variables[variable])
+            expected_type = config_info[variable]
+            print(f'{variable} is of type {variable_type} rather than the expected {expected_type}')
             config_good = False
     if config_good is None:
         config_good = True
