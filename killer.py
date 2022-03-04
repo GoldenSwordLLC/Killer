@@ -24,9 +24,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 import argparse
+import os
 import time
-from helpers import detect_bt, detect_tray, detect_ac, detect_battery, detect_usb, detect_ethernet
+from pathlib import Path
 from config import sleep_length, debug_enable
+import debug
+import helpers
 
 __author__ = "Lvl4Sword, GhostOfGoes, MarkKoz"
 __license__ = "AGPL 3.0"
@@ -36,12 +39,21 @@ power_last_modified = {}
 
 
 def checks():
-    detect_bt()
-    detect_tray()
-    detect_ac()
-    detect_battery()
-    detect_usb()
-    detect_ethernet()
+    helpers.detect_bt()
+    helpers.detect_tray()
+    helpers.detect_ac()
+    helpers.detect_battery()
+    helpers.detect_usb()
+    helpers.detect_ethernet()
+
+
+def run_debug():
+    debug.detect_bt()
+    debug.detect_tray()
+    debug.detect_ac()
+    debug.detect_battery()
+    debug.detect_usb()
+    debug.detect_ethernet()
 
 
 if __name__ == '__main__':
@@ -51,15 +63,17 @@ if __name__ == '__main__':
     parser.add_argument("-d", "--debug", action="store_true",
                         help="Prints all info once, without worrying about shutdown.")
     parser.add_argument("-c", "--config", type=str, default=None,
-                        help="Path to a configuration file to use")
-    parser.add_argument("--no-logo", action="store_true",
-                        help="Do not display the startup logo")
+                        help="Path to a configuration file to use.")
     args = parser.parse_args()
 
     if debug_enable or args.debug:
         DEBUG = True
     else:
         DEBUG = False
+
+    script_directory = Path(__file__).parent
+    if os.path.isfile(script_directory, 'config.py'):
+        helpers.verify_config()
 
     while True:
         if DEBUG:

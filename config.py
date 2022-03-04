@@ -1,4 +1,8 @@
-# linux
+# If you choose to not use any of these, ensure they're empty rather than removed.
+# This is because verify_config() within helpers.py will look for these.
+# Unused strings should be "", lists should be [], dictionaries should be {}.
+# Also make sure you edit checks() within killer.py to remove the checks you don't care for.
+
 # 1 defines present, 0 defines not present
 ac_file = {'AC': 1}
 usb_id_whitelist = {"DEAD:BEEF": 1}

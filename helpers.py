@@ -15,11 +15,6 @@ from config import ethernet_connected_file, bluetooth_paired_whitelist, bluetoot
 from config import smtp_port, email_sender, email_destination, sender_password, cipher_choice, login_auth
 from config import log_file
 
-log = logging.getLogger('Base')
-
-CONFIG_SEARCH_PATHS = [Path.cwd(), Path.home()]
-CONFIG_FILENAME = "config.py"
-
 BT_MAC_REGEX = re.compile(r"(?:[0-9a-fA-F]:?){12}")
 BT_PAIRED_REGEX = re.compile(r"(Paired: [0-1])")
 BT_NAME_REGEX = re.compile(r"[0-9A-Za-z ]+(?=\s\()")
@@ -27,7 +22,6 @@ BT_CONNECTED_REGEX = re.compile(r"(Connected: [0-1])")
 
 POWER_PATH = Path('/sys/class/power_supply')
 
-LOG = logging.getLogger('POSIX')
 usb_ids = {}
 power_times = {}
 
@@ -191,3 +185,63 @@ def read_power_folder():
     battery_device = Path(POWER_PATH, battery_file)
     print(f'{ac_device}: {os.path.getmtime(ac_device)}')
     print(f'{battery_device}: {os.path.getmtime(battery_device)}')
+
+
+def verify_config():
+    config_good = None
+    config_info = {'ac_file': dict,
+                   'usb_id_whitelist': dict,
+                   'usb_connected_whitelist': dict,
+                   'cdrom_drive': str,
+                   'battery_file': dict,
+                   'ethernet_connected_file': str,
+                   'bluetooth_paired_whitelist': dict,
+                   'bluetooth_connected_whitelist': dict,
+                   'smtp_server': str,
+                   'smtp_port': int,
+                   'email_sender': str,
+                   'email_destination': list,
+                   'sender_password': str,
+                   'cipher_choice': str,
+                   'login_auth': str,
+                   'sleep_length': float,
+                   'log_file': str,
+                   'debug_enable': int}
+    dictionary_info = {'ac_file': {'type': 'simple', 'key': str, 'value': int},
+                       'usb_id_whitelist': {'type': 'simple', 'key': str, 'value': int},
+                       'usb_connected_whitelist': {'type': 'simple', 'key': str, 'value': int},
+                       'battery_file': {'type': 'simple', 'key': str, 'value': int},
+                       # all uppercase keys are user set, so aren't actually "USER_SET"
+                       'bluetooth_paired_whitelist': {'type': 'nested',
+                                                      'outer_keys': {"USER_SET": str},
+                                                      'inner_keys': ['name', 'amount'],
+                                                      'values': {'name': str, 'amount': int}},
+                       'bluetooth_connected_whitelist': {'type': 'nested',
+                                                      'outer_keys': {"USER_SET": str},
+                                                      'inner_keys': ['name', 'amount'],
+                                                      'values': {'name': str, 'amount': int}}}
+    list_info = {'email_destination': str}
+    config_variables = {"ac_file": ac_file, "usb_id_whitelist": usb_id_whitelist,
+                        "usb_connected_whitelist": usb_connected_whitelist, "cdrom_drive": cdrom_drive,
+                        "battery_file": battery_file, "ethernet_connected_file": ethernet_connected_file,
+                        "bluetooth_paired_whitelist": bluetooth_paired_whitelist,
+                        "bluetooth_connected_whitelist": bluetooth_connected_whitelist,
+                        "smtp_server": smtp_server, "smtp_port": smtp_port, "email_sender": email_sender,
+                        "email_destination": email_destination, "sender_password": sender_password,
+                        "cipher_choice": cipher_choice, "login_auth": login_auth, "log_file": log_file}
+    for variable in config_variables:
+        # See if the variable is actually what we expect
+        if isinstance(config_variables[variable], config_info[variable]):
+            if isinstance(config_info[variable], dict):
+                if dictionary_info[variable]['type'] == 'simple':
+                elif dictionary_info[variable]['type'] == 'nested':
+            elif isinstance(config_info[variable], list):
+        else:
+            print(f'{variable} is {type(config_variables[variable])} rather than the expected {config_info[variable]}')
+            config_good = False
+    if config_good is None:
+        config_good = True
+    if not config_good:
+        print("The configuration file could not be verified.")
+        sys.exit(1)
+
