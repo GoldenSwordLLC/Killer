@@ -188,11 +188,10 @@ def read_power_folder():
 
 
 def verify_config():
-    config_good = None
-    initial_types_good = None
-    email_destination_good = None
-    simple_dict_good = None
-    nested_dict_good = None
+    initial_types_good = True
+    email_destination_good = True
+    simple_dict_good = True
+    nested_dict_good = True
     config_info = {'ac_file': {},
                    'usb_id_whitelist': {},
                    'usb_connected_whitelist': {},
@@ -231,36 +230,53 @@ def verify_config():
                         "email_destination": email_destination, "sender_password": sender_password,
                         "cipher_choice": cipher_choice, "login_auth": login_auth, "sleep_length": sleep_length,
                         "log_file": log_file, "debug_enable": debug_enable}
+    # All variables
     for variable in config_info:
         if not isinstance(config_variables[variable], type(config_info[variable])):
             the_type = type(config_info[variable])
             print(f'{variable} in config.py is not the expected type of {the_type.__name__}')
             initial_types_good = False
-    if initial_types_good is None:
-        initial_types_good = True
 
+    # Specific to email_destination, since that's the only list
     for list_string in config_variables["email_destination"]:
         if not isinstance(list_string, str):
-            print(f'{list_string} in "email_destination" is not the expected type of string')
+            print(f'"{list_string}" in "email_destination" is not the expected type of string')
             email_destination_good = False
-    if email_destination_good is None:
-        email_destination_good = True
 
+    # Specific to all simple dictionaries
     for dict_var in simple_dictionary_info:
         for dict_key in list(config_variables[dict_var].keys()):
             if not isinstance(dict_key, str):
-                print(f'{config_variables[dict_var]} in config.py is not the expected type of string')
+                print(f'"{config_variables[dict_var]}" in config.py is not the expected type of string')
                 simple_dict_good = False
         for dict_value in list(config_variables[dict_var].values()):
             if not isinstance(dict_value, int):
-                print(f'{simple_dictionary_info[dict_var]} in {dict_var} is not the expected type of int')
+                print(f'"{simple_dictionary_info[dict_var]}" in "{dict_var}" is not the expected type of int')
                 simple_dict_good = False
-    if simple_dict_good is None:
-        simple_dict_good = True
 
-    # TODO - nested dict verification
+    # Specific to all nested dictionaries
+    for nested_dict_var in nested_dictionary_info:
+        for nested_dict_key in list(config_variables[nested_dict_var].keys()):
+            for internal_dict_key in config_variables[nested_dict_var][nested_dict_key]:
+                if internal_dict_key in ['name', 'amount']:
+                    if not isinstance(internal_dict_key, str):
+                        print(f'The key "{internal_dict_key}" within the nested dictionary "{nested_dict_var}" in config.py is not the expected type of string')
+                        nested_dict_good = False
+                    else:
+                        this_internal_value = config_variables[nested_dict_var][nested_dict_key][internal_dict_key]
+                        if internal_dict_key == 'name':
+                            if not isinstance(this_internal_value, str):
+                                print(f'The key "{internal_dict_key}" within the nested dictionary "{nested_dict_var}" in config.py is not the expected type of string')
+                                nested_dict_good = False
+                        else:
+                            if not isinstance(this_internal_value, int):
+                                print(f'The key "{internal_dict_key}" within the nested dictionary "{nested_dict_var}" in config.py is not the expected type of string')
+                                nested_dict_good = False
+                else:
+                    print(f'{internal_dict_key} is an unexpected internal dict key for {nested_dict_var}.')
+                    simple_dict_good = False
 
-    if not all(initial_types_good, email_destination_good, simple_dict_good):
+    if not all([initial_types_good, email_destination_good, simple_dict_good, nested_dict_good]):
         print('The configuration file is not valid.')
         print('Please remedy the above issues.')
         sys.exit(1)
