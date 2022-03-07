@@ -1,5 +1,4 @@
 import fcntl
-import logging
 import os
 import re
 import smtplib
@@ -14,7 +13,7 @@ import usb
 from config import ac_file, usb_id_whitelist, usb_connected_whitelist, cdrom_drive, battery_file
 from config import ethernet_connected_file, bluetooth_paired_whitelist, bluetooth_connected_whitelist, smtp_server
 from config import smtp_port, email_sender, email_destination, sender_password, cipher_choice, login_auth
-from config import log_file
+from config import sleep_length, log_file, debug_enable
 
 BT_MAC_REGEX = re.compile(r"(?:[0-9a-fA-F]:?){12}")
 BT_PAIRED_REGEX = re.compile(r"(Paired: [0-1])")
@@ -75,13 +74,13 @@ def detect_usb():
                 kill_the_system(f'USB Duplicate Device: {each_device}')
 
 
-# TODO
+# TODO - Don't hardcode this
 def detect_ac():
     if not ac_file:
         kill_the_system('AC')
 
 
-# TODO
+# TODO - Don't hardcode this
 def detect_battery():
     if not battery_file:
         kill_the_system('Battery')
@@ -190,6 +189,10 @@ def read_power_folder():
 
 def verify_config():
     config_good = None
+    initial_types_good = None
+    email_destination_good = None
+    simple_dict_good = None
+    nested_dict_good = None
     config_info = {'ac_file': {},
                    'usb_id_whitelist': {},
                    'usb_connected_whitelist': {},
@@ -208,19 +211,16 @@ def verify_config():
                    'sleep_length': 1.0,
                    'log_file': 'STRING',
                    'debug_enable': 1}
-    dictionary_info = {'ac_file': {'type': 'simple', 'key': 'STRING', 'value': 0},
-                       'usb_id_whitelist': {'type': 'simple', 'key': 'STRING', 'value': 0},
-                       'usb_connected_whitelist': {'type': 'simple', 'key': 'STRING', 'value': 0},
-                       'battery_file': {'type': 'simple', 'key': 'STRING', 'value': 0},
-                       # all uppercase keys are user set, so aren't actually "USER_SET"
-                       'bluetooth_paired_whitelist': {'type': 'nested',
-                                                      'outer_keys': {"USER_SET": 'STRING'},
-                                                      'inner_keys': ['name', 'amount'],
-                                                      'values': {'name': 'STRING', 'amount': 0}},
-                       'bluetooth_connected_whitelist': {'type': 'nested',
-                                                         'outer_keys': {"USER_SET": 'STRING'},
-                                                         'inner_keys': ['name', 'amount'],
-                                                         'values': {'name': 'STRING', 'amount': 0}}}
+    simple_dictionary_info = {'ac_file': {'key': 'STRING', 'value': 0},
+                              'usb_id_whitelist': {'key': 'STRING', 'value': 0},
+                              'usb_connected_whitelist': {'key': 'STRING', 'value': 0},
+                              'battery_file': {'key': 'STRING', 'value': 0}}
+    nested_dictionary_info = {'bluetooth_paired_whitelist': {'outer_keys': {"USER_SET": 'STRING'},
+                                                             'inner_keys': ['name', 'amount'],
+                                                             'values': {'name': 'STRING', 'amount': 0}},
+                              'bluetooth_connected_whitelist': {'outer_keys': {"USER_SET": 'STRING'},
+                                                                'inner_keys': ['name', 'amount'],
+                                                                'values': {'name': 'STRING', 'amount': 0}}}
     list_info = {'email_destination': 'STRING'}
     config_variables = {"ac_file": ac_file, "usb_id_whitelist": usb_id_whitelist,
                         "usb_connected_whitelist": usb_connected_whitelist, "cdrom_drive": cdrom_drive,
@@ -229,32 +229,40 @@ def verify_config():
                         "bluetooth_connected_whitelist": bluetooth_connected_whitelist,
                         "smtp_server": smtp_server, "smtp_port": smtp_port, "email_sender": email_sender,
                         "email_destination": email_destination, "sender_password": sender_password,
-                        "cipher_choice": cipher_choice, "login_auth": login_auth, "log_file": log_file}
-    for variable in config_variables:
-        # See if the variable is actually what we expect
-        if isinstance(config_variables[variable], type(config_info[variable])):
-            if isinstance(config_info[variable], dict):
-                # a simple dict is a non-nested dict like a = {'b': 'c'}
-                if dictionary_info[variable]['type'] == 'simple':
-                    if dictionary_info[variable]['key'] == 'STRING':
-                        if not isinstance(list(config_variables[variable].keys())[0], str):
-                            item = list(config_variables[variable].keys())[0]
-                            item_type = type(list(config_variables[variable].keys())[0])
-                            print(f'{item} is of type {item_type} rather than the expected string')
-                            config_good = False
-                # nested dict is, well, a nested dict like a = {'b': {'c': 'd'}}
-                elif dictionary_info[variable]['type'] == 'nested':
-                    print('nested dict')
-            elif isinstance(config_info[variable], list):
-                print('list')
-        else:
-            variable_type = type(config_variables[variable])
-            expected_type = config_info[variable]
-            print(f'{variable} is of type {variable_type} rather than the expected {expected_type}')
-            config_good = False
-    if config_good is None:
-        config_good = True
-    if not config_good:
-        print("The configuration file could not be verified.")
-        sys.exit(1)
+                        "cipher_choice": cipher_choice, "login_auth": login_auth, "sleep_length": sleep_length,
+                        "log_file": log_file, "debug_enable": debug_enable}
+    for variable in config_info:
+        if not isinstance(config_variables[variable], type(config_info[variable])):
+            the_type = type(config_info[variable])
+            print(f'{variable} in config.py is not the expected type of {the_type.__name__}')
+            initial_types_good = False
+    if initial_types_good is None:
+        initial_types_good = True
 
+    for list_string in config_variables["email_destination"]:
+        if not isinstance(list_string, str):
+            print(f'{list_string} in "email_destination" is not the expected type of string')
+            email_destination_good = False
+    if email_destination_good is None:
+        email_destination_good = True
+
+    for dict_var in simple_dictionary_info:
+        for dict_key in list(config_variables[dict_var].keys()):
+            if not isinstance(dict_key, str):
+                print(f'{config_variables[dict_var]} in config.py is not the expected type of string')
+                simple_dict_good = False
+        for dict_value in list(config_variables[dict_var].values()):
+            if not isinstance(dict_value, int):
+                print(f'{simple_dictionary_info[dict_var]} in {dict_var} is not the expected type of int')
+                simple_dict_good = False
+    if simple_dict_good is None:
+        simple_dict_good = True
+
+    # TODO - nested dict verification
+
+    if not all(initial_types_good, email_destination_good, simple_dict_good):
+        print('The configuration file is not valid.')
+        print('Please remedy the above issues.')
+        sys.exit(1)
+    else:
+        config_good = True
