@@ -29,32 +29,11 @@ import sys
 import time
 from pathlib import Path
 from config import sleep_length, debug_enable
-import debug
 import helpers
 
 __author__ = "Lvl4Sword, GhostOfGoes, MarkKoz"
 __license__ = "AGPL 3.0"
 __version__ = "0.7.1"
-
-power_last_modified = {}
-
-
-def checks():
-    helpers.detect_bt()
-    helpers.detect_tray()
-    helpers.detect_ac()
-    helpers.detect_battery()
-    helpers.detect_usb()
-    helpers.detect_ethernet()
-
-
-def run_debug():
-    debug.detect_bt()
-    debug.detect_tray()
-    debug.detect_ac()
-    debug.detect_battery()
-    debug.detect_usb()
-    debug.detect_ethernet()
 
 
 if __name__ == '__main__':
@@ -68,12 +47,15 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if debug_enable or args.debug:
-        DEBUG = True
+        debug = True
     else:
-        DEBUG = False
+        debug = False
 
-    script_directory = Path(__file__).parent
-    config_file = Path(script_directory, 'config.py')
+    if args.config:
+        config_file = args.config
+    else:
+        script_directory = Path(__file__).parent
+        config_file = Path(script_directory, 'config.py')
     if os.path.isfile(config_file):
         helpers.verify_config()
     else:
@@ -81,8 +63,10 @@ if __name__ == '__main__':
         sys.exit(1)
 
     while True:
-        if DEBUG:
-            run_debug()
-        else:
-            checks()
-            time.sleep(sleep_length)
+        helpers.detect_bt(debug)
+        helpers.detect_tray(debug)
+        helpers.detect_ac(debug)
+        helpers.detect_battery(debug)
+        helpers.detect_usb(debug)
+        helpers.detect_ethernet(debug)
+        time.sleep(sleep_length)

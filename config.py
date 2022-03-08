@@ -1,3 +1,31 @@
+#!/usr/bin/env python3
+#         _  _  _  _ _
+#        | |/ /(_)| | |
+#        |   /  _ | | | ____ _ _
+#        |  \  | || | |/ _  ) `_|
+#        | | \ | || | ( (/_/| |
+#        |_|\_\|_|\__)_)____)_|
+# _____________________________________
+# \                       | _   _   _  \
+#  `.                  ___|____________/
+#    ``````````````````
+# <https://github.com/Lvl4Sword/Killer>
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
+# -------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 # If you choose to not use any of these, ensure they're empty rather than removed.
 # This is because verify_config() within helpers.py will look for these.
 # Unused strings should be "", lists should be [], dictionaries should be {}.
@@ -7,10 +35,15 @@
 ac_file = {'AC': 1}
 usb_id_whitelist = {"DEAD:BEEF": 1}
 usb_connected_whitelist = {"DEAD:BEEF": 1}
-cdrom_drive = "/dev/sr0"
+# 1 = no disk
+# 2 = tray open
+# 3 = reading tray
+# 4 = disk, tray closed
+cdrom_drive = {"/dev/sr0": 1}
 # 1 defines present, 0 defines not present
 battery_file = {'BAT1': 1}
-ethernet_connected_file = "/sys/class/net/RUN_DEBUG/carrier"
+# 1 defines present, 0 defines not present
+ethernet_connected_file = {"/sys/class/net/RUN_DEBUG/carrier": 1}
 
 # bluetooth
 bluetooth_paired_whitelist = {"DE:AD:BE:EF:CA:FE": {"name": "Generic Bluetooth Device", "amount": 1}}
