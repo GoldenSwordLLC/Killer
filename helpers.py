@@ -40,10 +40,10 @@ from config import ethernet_connected_file, bluetooth_paired_whitelist, bluetoot
 from config import smtp_port, email_sender, email_destination, sender_password, cipher_choice, login_auth
 from config import sleep_length, log_file, debug_enable
 
+BT_CONNECTED_REGEX = re.compile(r"Connected: ([0-1])")
 BT_MAC_REGEX = re.compile(r"(?:[0-9a-fA-F]:?){12}")
-BT_PAIRED_REGEX = re.compile(r"(Paired: [0-1])")
-BT_NAME_REGEX = re.compile(r"[0-9A-Za-z ]+(?=\s\()")
-BT_CONNECTED_REGEX = re.compile(r"(Connected: [0-1])")
+BT_NAME_REGEX = re.compile(r"Name: ([.0-9A-Za-z ]+)")
+BT_PAIRED_REGEX = re.compile(r"Paired: ([0-1])")
 
 POWER_PATH = Path('/sys/class/power_supply')
 
@@ -52,61 +52,63 @@ power_times = {}
 
 
 def detect_bt(debug):
-    bluetooth_p_devices = {}
-    bluetooth_c_devices = {}
+    bluetooth_devices = {'paired': {}, 'connected': {}}
     try:
         bt_command = subprocess.check_output(["bt-device", "--list"],
                                              shell=False).decode()
     except Exception as e:
-        print(f'Bluetooth: none detected (exception: {str(e)})')
+        print(f'Bluetooth: Exception: {str(e)})')
     else:
-        paired_device_macs = re.findall(BT_MAC_REGEX, bt_command)
-        paired_device_names = re.findall(BT_NAME_REGEX, bt_command)
-        paired_device_paired = re.findall(BT_PAIRED_REGEX, bt_command)
-        bluetooth_paired_devices = map(paired_device_names, paired_device_macs, paired_device_paired)
-        for bt_device in bluetooth_paired_devices:
-            bt_paired_name = bt_device[0]
-            bt_paired_mac = bt_device[1]
-            bt_paired_paired = bt_device[2]
-            if bt_paired_mac not in bluetooth_paired_whitelist:
-                if not debug:
-                    kill_the_system(f'Bluetooth Paired: {bt_paired_mac}')
+        device_macs = re.findall(BT_MAC_REGEX, bt_command)
+        for mac_address in device_macs:
+            device_info = subprocess.check_output(["bt-device", "-i",
+                                                  mac_address],
+                                                  shell=False).decode()
+            device_name = re.findall(BT_NAME_REGEX, device_info)[0]
+            device_paired = int(re.findall(BT_PAIRED_REGEX, device_info)[0])
+            device_connected = int(re.findall(BT_CONNECTED_REGEX, device_info)[0])
+            if device_paired:
+                if mac_address in bluetooth_devices['paired']:
+                    bluetooth_devices['paired'][mac_address][device_name] += 1
                 else:
-                    print(f'Bluetooth: {bt_paired_mac} is not in bluetooth_paired_whitelist')
+                    bluetooth_devices['paired'][mac_address] = {}
+                    bluetooth_devices['paired'][mac_address][device_name] = 1
+            if device_connected:
+                if mac_address in bluetooth_devices['connected']:
+                    bluetooth_devices['connected'][mac_address][device_name] += 1
+                else:
+                    bluetooth_devices['connected'][mac_address] = {}
+                    bluetooth_devices['connected'][mac_address][device_name] = 1
+            if debug:
+                print(f'Bluetooth Device Name: {device_name}')
+                print(f'Bluetooth Paired: {device_paired}')
+                print(f'Bluetooth Connected: {device_connected}')
             else:
-                if bluetooth_paired_devices[bt_paired_mac] != bt_paired_name:
-                    if not debug:
-                        kill_the_system(f'Bluetooth Paired Name: {bt_paired_name}')
+                if bluetooth_paired_whitelist != {}:
+                    if mac_address in bluetooth_paired_whitelist['paired']:
+                        if bluetooth_paired_whitelist[mac_address]['name'] != device_name:
+                            kill_the_system(f'Bluetooth Paired Name: {device_name}')
                     else:
-                        print(f'Bluetooth: {bt_paired_name} is not the correct name for {bt_paired_mac}')
-                else:
-                    if bt_paired_mac in bluetooth_p_devices:
-                        bluetooth_p_devices[bt_paired_mac] += 1
-                    else:
-                        bluetooth_p_devices[bt_paired_mac] = {}
-                        bluetooth_p_devices[bt_paired_mac] = 1
-        connected = subprocess.check_output(["bt-device", "-i",
-                                             [bt_paired_mac]],
-                                            shell=False).decode()
-
-            connected_text = re.findall(BT_CONNECTED_REGEX, connected)[0]
-            if connected_text.endswith("1"):
-                if bt_paired_mac not in bluetooth_connected_whitelist:
-                    if not debug:
-                        kill_the_system(f'Bluetooth Connected MAC Disallowed: {bt_paired_mac}')
-                    else:
-                        print(f'Bluetooth: {bt_paired_mac} is not in bluetooth_connected_whitelist')
-                else:
-                    if bluetooth_connected_whitelist[bt_paired_mac] !=
-            else:
-                if not debug:
-                    kill_the_system(f'Bluetooth Connected MAC Disallowed: {bt_paired_mac}')
-                else:
-                    print(f'Bluetooth: {bt_paired_mac} is not in bluetooth_connected_whitelist')
+                        kill_the_system(f'Bluetooth Paired MAC Disallowed: {mac_address}')
+                if bluetooth_connected_whitelist != {}:
+                    if device_connected and mac_address not in bluetooth_connected_whitelist:
+                        kill_the_system(f'Bluetooth Connected MAC Disallowed: {mac_address}')
+                    elif device_connected and mac_address in bluetooth_connected_whitelist:
+                        if bluetooth_connected_whitelist[mac_address]['name'] != device_name:
+                            kill_the_system(f'Bluetooth Connected Name: {device_name}')
+        for each_mac in bluetooth_devices:
+            actual_amount = bluetooth_devices[each_mac]['amount']
+            if bluetooth_paired_whitelist != {}:
+                expected_p_amount = bluetooth_paired_whitelist[each_mac]['amount']
+                if actual_amount != expected_p_amount:
+                    kill_the_system(f'Bluetooth Amount: {each_mac} - Actual: {actual_amount} / Expected: {expected_p_amount}')
+            if bluetooth_connected_whitelist != {}:
+                expected_c_amount = bluetooth_connected_whitelist[each_mac]['amount']
+                if actual_amount != expected_c_amount:
+                    kill_the_system(f'Bluetooth Amount: {each_mac} - Actual: {actual_amount} / Expected: {expected_c_amount}')
 
 
 def detect_usb(debug):
-    usb_ids = {}
     for dev in usb.core.find(find_all=True):
         this_device = f"{hex(dev.idVendor)[2:]:0>4}:{hex(dev.idProduct)[2:]:0>4}"
         if this_device in usb_ids:

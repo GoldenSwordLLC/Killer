@@ -28,8 +28,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from config import sleep_length, debug_enable
-import helpers
 
 __author__ = "Lvl4Sword, GhostOfGoes, MarkKoz"
 __license__ = "AGPL 3.0"
@@ -46,20 +44,21 @@ if __name__ == '__main__':
                         help="Path to a configuration file to use.")
     args = parser.parse_args()
 
-    if debug_enable or args.debug:
-        debug = True
-    else:
-        debug = False
-
     if args.config:
-        config_file = args.config
+        config = args.config
     else:
         script_directory = Path(__file__).parent
-        config_file = Path(script_directory, 'config.py')
-    if os.path.isfile(config_file):
+        config = Path(script_directory, 'config.py')
+    if os.path.isfile(config):
+        from config import sleep_length, debug_enable
+        import helpers
+        if debug_enable or args.debug:
+            debug = True
+        else:
+            debug = False
         helpers.verify_config()
     else:
-        print(f'{config_file} does not exist')
+        print(f'{config} does not exist')
         sys.exit(1)
 
     while True:
