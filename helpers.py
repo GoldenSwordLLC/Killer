@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright(C) 2018 MarkKoz
+# Copyright(C) 2018 - 2019 GhostOfGoes / Christopher Goes
+# Copyright(C) 2018 - 2022 Lvl4Sword / Scott King
 #         _  _  _  _ _
 #        | |/ /(_)| | |
 #        |   /  _ | | | ____ _ _
@@ -126,7 +129,7 @@ async def detect_usb(debug):
             usb_ids[this_device] = 1
     for each_device in usb_ids:
         if each_device not in usb_id_whitelist:
-            await kill_the_system(f'USB Allowed Whitelist:')
+            await kill_the_system(f'USB Allowed Whitelist: {each_device}')
         else:
             if usb_id_whitelist[each_device] != usb_ids[each_device]:
                 await kill_the_system(f'USB Duplicate Device: {each_device}')

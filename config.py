@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright(C) 2018 MarkKoz
+# Copyright(C) 2018 - 2019 GhostOfGoes / Christopher Goes
+# Copyright(C) 2018 - 2022 Lvl4Sword / Scott King
 #         _  _  _  _ _
 #        | |/ /(_)| | |
 #        |   /  _ | | | ____ _ _

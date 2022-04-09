@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright(C) 2018 MarkKoz
+# Copyright(C) 2018 - 2019 GhostOfGoes / Christopher Goes
+# Copyright(C) 2018 - 2022 Lvl4Sword / Scott King
 #         _  _  _  _ _
 #        | |/ /(_)| | |
 #        |   /  _ | | | ____ _ _
@@ -31,10 +34,6 @@ from pathlib import Path
 from config import sleep_length, debug_enable
 import helpers
 
-__author__ = "Lvl4Sword, GhostOfGoes, MarkKoz"
-__license__ = "AGPL 3.0"
-__version__ = "0.7.1"
-
 
 async def main():
     while True:
@@ -53,7 +52,7 @@ async def main():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog="Killer")
     parser.add_argument("--version", action="version",
-                        version=f"%(prog)s {__version__}")
+                        version=f"%(prog)s 0.7.1")
     parser.add_argument("-d", "--debug", action="store_true",
                         help="Prints all info once, without worrying about shutdown.")
     parser.add_argument("-c", "--config", type=str, default=None,
