@@ -24,14 +24,30 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 import argparse
+import asyncio
 import os
 import sys
-import time
 from pathlib import Path
+from config import sleep_length, debug_enable
+import helpers
 
 __author__ = "Lvl4Sword, GhostOfGoes, MarkKoz"
 __license__ = "AGPL 3.0"
 __version__ = "0.7.1"
+
+
+async def main():
+    while True:
+        await helpers.detect_bt(debug)
+        await helpers.detect_tray(debug)
+        await helpers.detect_ac(debug)
+        await helpers.detect_battery(debug)
+        await helpers.detect_usb(debug)
+        await helpers.detect_ethernet(debug)
+        await asyncio.sleep(sleep_length)
+        if debug:
+            loop.stop()
+            break
 
 
 if __name__ == '__main__':
@@ -50,8 +66,6 @@ if __name__ == '__main__':
         script_directory = Path(__file__).parent
         config = Path(script_directory, 'config.py')
     if os.path.isfile(config):
-        from config import sleep_length, debug_enable
-        import helpers
         if debug_enable or args.debug:
             debug = True
         else:
@@ -61,11 +75,5 @@ if __name__ == '__main__':
         print(f'{config} does not exist')
         sys.exit(1)
 
-    while True:
-        helpers.detect_bt(debug)
-        helpers.detect_tray(debug)
-        helpers.detect_ac(debug)
-        helpers.detect_battery(debug)
-        helpers.detect_usb(debug)
-        helpers.detect_ethernet(debug)
-        time.sleep(sleep_length)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())

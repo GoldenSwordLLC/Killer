@@ -51,7 +51,7 @@ usb_ids = {}
 power_times = {}
 
 
-def detect_bt(debug):
+async def detect_bt(debug):
     bluetooth_devices = {'paired': {}, 'connected': {}}
     try:
         bt_command = subprocess.check_output(["bt-device", "--list"],
@@ -83,32 +83,40 @@ def detect_bt(debug):
                 print(f'Bluetooth Device Name: {device_name}')
                 print(f'Bluetooth Paired: {device_paired}')
                 print(f'Bluetooth Connected: {device_connected}')
-            else:
-                if bluetooth_paired_whitelist != {}:
-                    if mac_address in bluetooth_paired_whitelist['paired']:
-                        if bluetooth_paired_whitelist[mac_address]['name'] != device_name:
-                            kill_the_system(f'Bluetooth Paired Name: {device_name}')
-                    else:
-                        kill_the_system(f'Bluetooth Paired MAC Disallowed: {mac_address}')
-                if bluetooth_connected_whitelist != {}:
-                    if device_connected and mac_address not in bluetooth_connected_whitelist:
-                        kill_the_system(f'Bluetooth Connected MAC Disallowed: {mac_address}')
-                    elif device_connected and mac_address in bluetooth_connected_whitelist:
-                        if bluetooth_connected_whitelist[mac_address]['name'] != device_name:
-                            kill_the_system(f'Bluetooth Connected Name: {device_name}')
-        for each_mac in bluetooth_devices:
-            actual_amount = bluetooth_devices[each_mac]['amount']
+        if not debug:
             if bluetooth_paired_whitelist != {}:
-                expected_p_amount = bluetooth_paired_whitelist[each_mac]['amount']
-                if actual_amount != expected_p_amount:
-                    kill_the_system(f'Bluetooth Amount: {each_mac} - Actual: {actual_amount} / Expected: {expected_p_amount}')
+                paired_devices = bluetooth_devices['paired']
+                for paired_mac in paired_devices:
+                    try:
+                        if bluetooth_paired_whitelist[paired_mac]['name'] != device_name:
+                            await kill_the_system(f'Bluetooth Paired Name: {device_name}')
+                    except KeyError:
+                        await kill_the_system(f'Bluetooth Paired MAC Disallowed: {mac_address}')
             if bluetooth_connected_whitelist != {}:
-                expected_c_amount = bluetooth_connected_whitelist[each_mac]['amount']
-                if actual_amount != expected_c_amount:
-                    kill_the_system(f'Bluetooth Amount: {each_mac} - Actual: {actual_amount} / Expected: {expected_c_amount}')
+                if device_connected and mac_address not in bluetooth_connected_whitelist:
+                    await kill_the_system(f'Bluetooth Connected MAC Disallowed: {mac_address}')
+                elif device_connected and mac_address in bluetooth_connected_whitelist:
+                    if bluetooth_connected_whitelist[mac_address]['name'] != device_name:
+                        await kill_the_system(f'Bluetooth Connected Name: {device_name}')
+        if not debug:
+            try:
+                for each_mac in bluetooth_devices['paired']:
+                    for each_name in bluetooth_devices[each_mac]:
+                        actual_amount = bluetooth_devices[each_mac][each_name]
+                        if bluetooth_paired_whitelist != {}:
+                            expected_p_amount = bluetooth_paired_whitelist[each_mac]['amount']
+                            if actual_amount != expected_p_amount:
+                                await kill_the_system(
+                                    f'Bluetooth Amount: {each_mac} - Actual: {actual_amount} / Expected: {expected_p_amount}')
+                        if bluetooth_connected_whitelist != {}:
+                            expected_c_amount = bluetooth_connected_whitelist[each_mac]['amount']
+                            if actual_amount != expected_c_amount:
+                                await kill_the_system(f'Bluetooth Amount: {each_mac} - Actual: {actual_amount} / Expected: {expected_c_amount}')
+            except KeyError:
+                await kill_the_system(f"Bluetooth: {each_mac} not present in bluetooth_devices['paired']")
 
 
-def detect_usb(debug):
+async def detect_usb(debug):
     for dev in usb.core.find(find_all=True):
         this_device = f"{hex(dev.idVendor)[2:]:0>4}:{hex(dev.idProduct)[2:]:0>4}"
         if this_device in usb_ids:
@@ -118,80 +126,99 @@ def detect_usb(debug):
             usb_ids[this_device] = 1
     for each_device in usb_ids:
         if each_device not in usb_id_whitelist:
-            kill_the_system(f'USB Allowed Whitelist:')
+            await kill_the_system(f'USB Allowed Whitelist:')
         else:
             if usb_id_whitelist[each_device] != usb_ids[each_device]:
-                kill_the_system(f'USB Duplicate Device: {each_device}')
+                await kill_the_system(f'USB Duplicate Device: {each_device}')
     for each_device in usb_connected_whitelist:
         if each_device not in usb_ids:
-            kill_the_system(f'USB Connected Whitelist: {each_device}')
+            await kill_the_system(f'USB Connected Whitelist: {each_device}')
         else:
             if usb_connected_whitelist[each_device] != usb_ids[each_device]:
-                kill_the_system(f'USB Duplicate Device: {each_device}')
+                await kill_the_system(f'USB Duplicate Device: {each_device}')
 
 
-def detect_ac(debug):
-    ac_file_name = list(ac_file.keys())[0]
-    the_ac_file = Path(POWER_PATH, ac_file_name)
-    read_power_file(the_ac_file, debug)
-    if not ac_file:
-        kill_the_system('AC')
+async def detect_ac(debug):
+    if ac_file != {}:
+        for ac_file_name in ac_file:
+            the_ac_file = Path(POWER_PATH, ac_file_name)
+            await read_power_file(the_ac_file)
+            if not ac_file:
+                await kill_the_system('AC')
 
 
-def detect_battery(debug):
+async def detect_battery(debug):
     for battery in battery_file:
         if battery not in power_times:
-            status, expected_status = read_power_file(battery)
+            the_battery_file = Path(POWER_PATH, battery)
+            status, expected_status = await read_power_file(the_battery_file)
             if status != expected_status:
-                kill_the_system('Battery')
+                await kill_the_system('Battery')
             else:
-                power_time = read_power_time(battery)
+                power_time = await read_power_time(battery)
                 power_times[battery] = power_time
         else:
-            power_time = read_power_time(battery)
+            power_time = await read_power_time(battery)
             if power_times[battery] != power_time:
                 power_times[battery] = power_time
-                status, expected_status = read_power_file(battery)
+                status, expected_status = await read_power_file(the_battery_file)
                 if status != expected_status:
-                    kill_the_system('Battery')
+                    await kill_the_system('Battery')
             # No reason to do an else here, considering we know it wasn't
             # changed/altered based off the timestamp :-)
 
 
+async def detect_tray(debug):
+    if cdrom_drive != {}:
+        for disk_tray in cdrom_drive:
+            try:
+                fd = os.open(disk_tray, os.O_RDONLY | os.O_NONBLOCK)
+                rv = fcntl.ioctl(fd, 0x5326)
+                os.close(fd)
+                if rv != cdrom_drive[disk_tray]:
+                    await kill_the_system('CD Tray')
+            except FileNotFoundError:
+                if debug:
+                    print(f'Detect Tray: {disk_tray} is not a valid file.')
+                else:
+                    await kill_the_system('CD Tray')
+            except KeyError:
+                await kill_the_system('CD Tray')
 
 
-def detect_tray(debug):
-    for cdrom in cdrom_drive:
-        disk_tray = cdrom
-        fd = os.open(disk_tray, os.O_RDONLY | os.O_NONBLOCK)
-        rv = fcntl.ioctl(fd, 0x5326)
-        os.close(fd)
-        if rv != cdrom_drive[cdrom]:
-            kill_the_system('CD Tray')
+async def detect_ethernet(debug):
+    for ethernet_file in ethernet_connected_file:
+        with open(ethernet_file) as the_ethernet_file:
+            connected = int(the_ethernet_file.readline().strip())
+        if connected != ethernet_connected_file[ethernet_file]:
+            await kill_the_system('Ethernet')
 
 
-def detect_ethernet(debug):
-    with open(ethernet_connected_file) as ethernet:
-        connected = int(ethernet.readline().strip())
-
-    if connected:
-        kill_the_system('Ethernet')
-
-
-def kill_the_system(warning: str):
+async def kill_the_system(warning: str):
+    print(warning)
     try:
-        mail_this(warning)
+        await mail_this(warning)
     except socket.gaierror:
         current_time = time.localtime()
         formatted_time = time.strftime('%Y-%m-%d %I:%M:%S%p', current_time)
-        with open(log_file, 'a', encoding='utf-8') as the_log_file:
-            the_log_file.write('Time: {0}\nInternet is out.\n'
-                               'Failure: {1}\n\n'.format(formatted_time, warning))
-    subprocess.Popen(["/sbin/poweroff", "-f"])
+        try:
+            with open(log_file, 'a', encoding='utf-8') as the_log_file:
+                the_log_file.write('Time: {0}\nInternet is out.\n'
+                                   'Failure: {1}\n\n'.format(formatted_time, warning))
+        except FileNotFoundError:
+            if debug_enable:
+                print(f'Killing The System: {log_file} is not a valid file.')
+            else:
+                # So this is a tricky one, considering the exception was tripped AND the log file is non-existent.
+                # The only real thing we can do here is pass, considering the system's going to shut off anyway.
+                pass
+    if not debug_enable:
+        print('KILLING')
+        subprocess.Popen(["/sbin/poweroff", "-f"])
 
 
 # TODO - Get Jinja templating setup for this
-def mail_this(warning: str):
+async def mail_this(warning: str):
     subject = f'[Killer: {warning}]'
 
     current_time = time.localtime()
@@ -227,7 +254,7 @@ def mail_this(warning: str):
         conn.quit()
 
 
-def read_power_file(the_device):
+async def read_power_file(the_device):
     power_dict = {}
     device_name = the_device.name
     device_uevent = Path(the_device, 'uevent')
@@ -243,15 +270,23 @@ def read_power_file(the_device):
                 power_dict[device_name]['online'] = stripped_line.replace('ONLINE=', '')
             elif stripped_line.startswith('PRESENT'):
                 power_dict[device_name]['present'] = stripped_line.replace('PRESENT=', '')
-        # Plugged into the wall
-        if power_dict[device_name]['type'] == 'Mains':
-            return power_dict[device_name]['online'], ac_file[device_name]
-        # Battery, or otherwise UPS
-        elif power_dict[device_name]['type'] in ['Battery', 'UPS', 'USB']:
-            return power_dict[device_name]['present'], battery_file[device_name]
+        try:
+            # Plugged into the wall
+            if power_dict[device_name]['type'] == 'Mains':
+                return power_dict[device_name]['online'], ac_file[device_name]
+            # Battery, or otherwise UPS
+            elif power_dict[device_name]['type'] in ['Battery', 'UPS', 'USB']:
+                return power_dict[device_name]['present'], battery_file[device_name]
+        except KeyError:
+            print(f'Read Power File: {device_name} is not in power_dict')
+    else:
+        if debug_enable:
+            print(f'Read Power File: {device_uevent} is not a valid file.')
+        else:
+            await kill_the_system('Ethernet')
 
 
-def read_power_time(power_device):
+async def read_power_time(power_device):
     power_path = Path(POWER_PATH, power_device)
     uevent_file = Path(power_path, 'uevent')
     return os.path.getmtime(uevent_file)
@@ -264,6 +299,8 @@ def verify_config():
     email_destination_good = True
     simple_dict_good = True
     nested_dict_good = True
+    files_verified = True
+    is_root = True
     config_info = {'ac_file': {},
                    'usb_id_whitelist': {},
                    'usb_connected_whitelist': {},
@@ -294,7 +331,7 @@ def verify_config():
                               'bluetooth_connected_whitelist': {'outer_keys': {"USER_SET": 'STRING'},
                                                                 'inner_keys': ['name', 'amount'],
                                                                 'values': {'name': 'STRING', 'amount': 0}}}
-    list_info = {'email_destination': 'STRING'}
+    # list_info = {'email_destination': 'STRING'}
     config_variables = {"ac_file": ac_file, "usb_id_whitelist": usb_id_whitelist,
                         "usb_connected_whitelist": usb_connected_whitelist, "cdrom_drive": cdrom_drive,
                         "battery_file": battery_file, "ethernet_connected_file": ethernet_connected_file,
@@ -304,6 +341,10 @@ def verify_config():
                         "email_destination": email_destination, "sender_password": sender_password,
                         "cipher_choice": cipher_choice, "login_auth": login_auth, "sleep_length": sleep_length,
                         "log_file": log_file, "debug_enable": debug_enable}
+    if os.geteuid() != 0:
+        print('Killer was not ran with root privileges')
+        is_root = False
+
     # All variables
     for variable in config_info:
         if not isinstance(config_variables[variable], type(config_info[variable])):
@@ -356,3 +397,41 @@ def verify_config():
         print('The configuration file is not valid.')
         print('Please remedy the above issue(s).')
         sys.exit(1)
+    else:
+        if not is_root:
+            print('------------------------')
+            print('Please remedy the above issue.')
+            sys.exit(1)
+        else:
+            # The configuration file types are what we'd expect, now to verify if the files actually exist..
+            if not os.path.isfile(log_file):
+                try:
+                    with open(log_file, 'a') as log_file_check:
+                        current_time = time.localtime()
+                        formatted_time = time.strftime('%Y-%m-%d %I:%M:%S%p', current_time)
+                        log_file_check.write(f'{formatted_time} - THIS IS A TEST')
+                except(FileNotFoundError, PermissionError):
+                    print(f'CONFIG: Could not write to non-existent {log_file}.')
+                    files_verified = False
+                else:
+                    print(f'CONFIG: {log_file} was not present, log_file created.')
+            for ac in ac_file:
+                if not os.path.isdir(Path(POWER_PATH, ac)):
+                    print(f'CONFIG: {Path(POWER_PATH, ac)} is NOT present')
+                    files_verified = False
+            for battery in battery_file:
+                if not os.path.isdir(Path(POWER_PATH, battery)):
+                    print(f'CONFIG: {Path(POWER_PATH, battery)} is NOT present')
+                    files_verified = False
+            for ethernet in ethernet_connected_file:
+                if not os.path.isfile(ethernet):
+                    print(f'CONFIG: {ethernet} is NOT present')
+                    files_verified = False
+            for disk_tray in cdrom_drive:
+                if not os.path.isfile(disk_tray):
+                    print(f'CONFIG: {disk_tray} is NOT present')
+                    files_verified = False
+            if files_verified:
+                print('CONFIG: All files/directories have been verified as being present.')
+            else:
+                sys.exit()
