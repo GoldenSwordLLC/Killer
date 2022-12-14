@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import getpass
 import os
@@ -11,9 +12,10 @@ import time
 from email.mime.text import MIMEText
 import pyudev
 from config import bluetooth_enabled, cipher_choice, debug_enabled, email_destination, email_enabled, email_sender
-from config import log_file, logging_enabled, login_auth, smtp_server, smtp_port, sender_password, time_format
-from config import usb_enabled, user_timezone
+from config import email_timeout, log_file, logging_enabled, login_auth, smtp_server, smtp_port, sender_password
+from config import time_format, usb_enabled, user_timezone
 
+VERSION = "0.8.1"
 BT_MAC_REGEX = re.compile(r"(?:[0-9a-fA-F]:?){12}")
 BT_NAME_REGEX = re.compile(r"[0-9A-Za-z ]+(?=\s\()")
 BT_CONNECTED_REGEX = re.compile(r"(Connected: [0-1])")
@@ -23,7 +25,7 @@ usb_ids = {}
 
 # Root is required for shutting down unless you allow your user to
 # shut the system down, which isn't recommended.
-async def detect_root():
+async def detect_root() -> bool:
     if getpass.getuser() == 'root':
         return True
     else:
@@ -31,7 +33,7 @@ async def detect_root():
 
 
 # TODO: This doesn't currently handle systems with more than one physical volume
-async def check_for_luks():
+async def check_for_luks() -> bool:
     physical_volumes = subprocess.check_output(['pvs', '-o', 'pv_name']).decode().split('\n')[1:-1]
     for physical_volume in physical_volumes:
         physical_volume = physical_volume.strip()
@@ -40,12 +42,15 @@ async def check_for_luks():
         if encryption_type == 'LUKS2':
             if len(physical_volumes) == 1:
                 return True
-    return None
+    return False
 
 
 async def set_time_settings():
-    os.environ['TZ'] = user_timezone
-    time.tzset()
+    if debug_set:
+        print(f"DEBUG: Your timezone would have been set to `{user_timezone}`")
+    else:
+        os.environ['TZ'] = user_timezone
+        time.tzset()
 
 
 # Bluetooth on Ubuntu 22.04 LTS ( and possibly others ) will only provide the adapter MAC via dbus.
@@ -89,10 +94,12 @@ async def get_all_usb():
 async def handle_bluetooth(this_device):
     if this_device.get('PHYS') is not None:
         if this_device.action == 'add':
-            print('ADD - BLUETOOTH')
+            if debug_enabled:
+                print('DEBUG: Bluetooth - device added')
             await get_all_bluetooth()
         elif this_device.action == 'remove':
-            print('REMOVE - BLUETOOTH')
+            if debug_enabled:
+                print('DEBUG: Bluetooth - device removed')
             await get_all_bluetooth()
 
 
@@ -121,7 +128,8 @@ async def mail_this(warning: str):
     ssl_context.options |= ssl.OP_SINGLE_ECDH_USE
     conn = smtplib.SMTP_SSL(smtp_server,
                             port=smtp_port,
-                            context=ssl_context)
+                            context=ssl_context,
+                            timeout=email_timeout)
     conn.esmtp_features['auth'] = login_auth
     conn.login(email_sender, sender_password)
     try:
@@ -134,35 +142,51 @@ async def mail_this(warning: str):
 
 
 async def tampering_detected(warning: str):
-    await custom_tampering_command(warning)
+    await default_tampering_command(warning)
+    # await custom_tampering_command(warning)
+
+
+# By default, if all the options are enabled for e-mail/logging AND debugging isn't enabled this will:
+# send an e-mail out, log to disk, and force shutdown the system
+async def default_tampering_command(warning: str):
+    if not debug_set:
+        # TODO
+        socket_error = False
+        if email_enabled:
+            try:
+                await mail_this(warning)
+            except socket.gaierror:
+                # TODO
+                socket_error = True
+            else:
+                socket_error = None
+        if logging_enabled:
+            current_time = time.localtime()
+            formatted_time = time.strftime(time_format, current_time)
+            try:
+                with open(log_file, 'a', encoding='utf-8') as the_log_file:
+                    the_log_file.write(f'Time: {formatted_time}\nInternet is out.\nFailure: {warning}\n\n')
+            except FileNotFoundError:
+                print(f'Tampering detected: {log_file} is not a valid file.')
+        subprocess.Popen(["/sbin/poweroff", "-f"])
+    else:
+        if email_enabled:
+            if logging_enabled:
+                print("DEBUG: E-mail, logging, and shutdown were not triggered")
+            else:
+                print("DEBUG: E-mail and shutdown were not triggered")
+        else:
+            if logging_enabled:
+                print("DEBUG: Logging and shutdown were not triggered")
+            else:
+                print("DEBUG: Shutdown was not triggered")
+
 
 
 # Run whatever you want here if tampering is detected.
-# By default, if all the options are enabled for e-mail/logging AND debugging isn't enabled this will:
-# send an e-mail out, log to disk, and shut the system off
+# If you set anything here, also change the tampering_detected function to actually run this.
 async def custom_tampering_command(warning: str):
-    # TODO
-    socket_error = False
-    if email_enabled:
-        try:
-            await mail_this(warning)
-        except socket.gaierror:
-            # TODO
-            socket_error = True
-    if logging_enabled:
-        current_time = time.localtime()
-        formatted_time = time.strftime(time_format, current_time)
-        try:
-            with open(log_file, 'a', encoding='utf-8') as the_log_file:
-                the_log_file.write('Time: {0}\nInternet is out.\n'
-                                   'Failure: {1}\n\n'.format(formatted_time, warning))
-        except FileNotFoundError:
-            if debug_enabled:
-                print(f'Tampering detected: {log_file} is not a valid file.')
-            else:
-                pass
-    if not debug_enabled:
-        subprocess.Popen(["/sbin/poweroff", "-f"])
+    pass
 
 
 async def main(monitor):
@@ -210,18 +234,50 @@ async def main(monitor):
             print("TODO")
 
 
+def the_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="Killer")
+    parser.add_argument("-v", "--version", action="version",
+                        version="%(prog)s {}".format(VERSION))
+    parser.add_argument("-d", "--debug", action="store_true",
+                        help="Prints all info once, without worrying about shutdown.")
+    parser.add_argument("-dni", action="store_true",
+                        help="Prints all info once, without worrying about shutdown, " +
+                             "AND stores what was detected non-interactively. " +
+                             "Doesn't add any USBs to connected whitelist. +"
+                             "If you need something more fine-grained, use -di for interactive.")
+    parser.add_argument("-di", action="store_true",
+                        help="Prints all info once, without worrying about shutdown, AND stores what was detected interactively.")
+    parser.add_argument("-c", "--config", type=str, default=None,
+                        help="Path to a configuration file to use")
+    parser.add_argument("-lc", "--log-config", type=str, default=None,
+                        help="Path to logging configuration file.")
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == '__main__':
+    debug_set = False
+    args = the_args()
+    if any([args.debug, args.dni, args.di, debug_enabled]):
+        debug_set = True
     running_as_root = detect_root()
     if not running_as_root:
-        sys.exit(1)
+        if debug_set:
+            print("DEBUG: You're not running as root")
+        else:
+            sys.exit(1)
     is_encrypted = check_for_luks()
     if not is_encrypted:
-        sys.exit(1)
+        if debug_set:
+            print("DEBUG: This system is not encrypted with LUKS")
+        else:
+            sys.exit(1)
     set_time_settings()
     get_all_usb()
     get_all_bluetooth()
-    context = pyudev.Context()
-    pyudev_monitor = pyudev.Monitor.from_netlink(context)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    asyncio.run(main(pyudev_monitor))
+    if not debug_set:
+        context = pyudev.Context()
+        pyudev_monitor = pyudev.Monitor.from_netlink(context)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        asyncio.run(main(pyudev_monitor))
