@@ -150,24 +150,26 @@ async def tampering_detected(warning: str):
 # send an e-mail out, log to disk, and force shutdown the system
 async def default_tampering_command(warning: str):
     if not debug_set:
-        # TODO
         socket_error = False
         if email_enabled:
             try:
                 await mail_this(warning)
             except socket.gaierror:
-                # TODO
                 socket_error = True
-            else:
-                socket_error = None
         if logging_enabled:
             current_time = time.localtime()
             formatted_time = time.strftime(time_format, current_time)
             try:
-                with open(log_file, 'a', encoding='utf-8') as the_log_file:
-                    the_log_file.write(f'Time: {formatted_time}\nInternet is out.\nFailure: {warning}\n\n')
-            except FileNotFoundError:
-                print(f'Tampering detected: {log_file} is not a valid file.')
+                if socket_error:
+                    with open(log_file, 'a', encoding='utf-8') as the_log_file:
+                        the_log_file.write(f'Time: {formatted_time}\nE-mail attempt failed.\nFailure: {warning}\nShutting down now.\n\n')
+                else:
+                    with open(log_file, 'a', encoding='utf-8') as the_log_file:
+                        the_log_file.write(f'Time: {formatted_time}\nFailure: {warning}\nShutting down now.\n\n')
+            except(FileNotFoundError, PermissionError):
+                # Debugging is disabled. We tried to log, but it failed for some reason.
+                # Can't really do anything here, so just pass.
+                pass
         subprocess.Popen(["/sbin/poweroff", "-f"])
     else:
         if email_enabled:
@@ -251,8 +253,8 @@ def the_args() -> argparse.Namespace:
                         help="Path to a configuration file to use")
     parser.add_argument("-lc", "--log-config", type=str, default=None,
                         help="Path to logging configuration file.")
-    args = parser.parse_args()
-    return args
+    all_args = parser.parse_args()
+    return all_args
 
 
 if __name__ == '__main__':
