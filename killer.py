@@ -15,7 +15,7 @@ from config import bluetooth_enabled, cipher_choice, debug_enabled, email_destin
 from config import email_timeout, log_file, logging_enabled, login_auth, smtp_server, smtp_port, sender_password
 from config import time_format, usb_enabled, user_timezone
 
-VERSION = "0.8.1"
+VERSION = "0.8.3"
 BT_MAC_REGEX = re.compile(r"(?:[0-9a-fA-F]:?){12}")
 BT_NAME_REGEX = re.compile(r"[0-9A-Za-z ]+(?=\s\()")
 BT_CONNECTED_REGEX = re.compile(r"(Connected: [0-1])")
@@ -25,24 +25,38 @@ usb_ids = {}
 
 # Root is required for shutting down unless you allow your user to
 # shut the system down, which isn't recommended.
-async def detect_root() -> bool:
+async def detect_root_user() -> bool:
     if getpass.getuser() == 'root':
         return True
     else:
         return False
 
 
-# TODO: This doesn't currently handle systems with more than one physical volume
+async def pv_encrypted(the_pv) -> bool:
+    cryptsetup_status = subprocess.check_output(['cryptsetup', 'status', the_pv]).decode().split('\n')
+    _, encryption_type = cryptsetup_status[1].split()
+    if encryption_type == 'LUKS2':
+        return True
+    else:
+        return False
+
+
 async def check_for_luks() -> bool:
-    physical_volumes = subprocess.check_output(['pvs', '-o', 'pv_name']).decode().split('\n')[1:-1]
-    for physical_volume in physical_volumes:
-        physical_volume = physical_volume.strip()
-        cryptsetup_status = subprocess.check_output(['cryptsetup', 'status', physical_volume]).decode().split('\n')
-        _, encryption_type = cryptsetup_status[1].split()
-        if encryption_type == 'LUKS2':
-            if len(physical_volumes) == 1:
-                return True
-    return False
+    pv_list = []
+    physical_volumes = subprocess.check_output(['pvs', '-o', 'pv_name']).decode().split()[1:]
+    for pv in physical_volumes:
+        if pv not in pv_list:
+            pv_list.append(pv)
+    if len(pv_list) == 1:
+        if await pv_encrypted(pv_list[0]):
+            return True
+        else:
+            return False
+    else:
+        for the_physical_volume in pv_list:
+            if not await pv_encrypted(the_physical_volume):
+                return False
+        return True
 
 
 async def set_time_settings():
@@ -240,15 +254,19 @@ def the_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="Killer")
     parser.add_argument("-v", "--version", action="version",
                         version="%(prog)s {}".format(VERSION))
+    # TODO - The different flavors of debug need to actually do what they advertise
     parser.add_argument("-d", "--debug", action="store_true",
-                        help="Prints all info once, without worrying about shutdown.")
+                        help="Debug. Prints all info once, without worrying about shutdown.")
     parser.add_argument("-dni", action="store_true",
-                        help="Prints all info once, without worrying about shutdown, " +
+                        help="Debug, non-interactive." +
+                             "Prints all info once, without worrying about shutdown, " +
                              "AND stores what was detected non-interactively. " +
-                             "Doesn't add any USBs to connected whitelist. +"
+                             "Doesn't add any USBs to connected whitelist. " +
                              "If you need something more fine-grained, use -di for interactive.")
     parser.add_argument("-di", action="store_true",
-                        help="Prints all info once, without worrying about shutdown, AND stores what was detected interactively.")
+                        help="Debug, interactive." +
+                             "Prints all info once, without worrying about shutdown, " +
+                             "AND stores what was detected interactively.")
     parser.add_argument("-c", "--config", type=str, default=None,
                         help="Path to a configuration file to use")
     parser.add_argument("-lc", "--log-config", type=str, default=None,
@@ -262,7 +280,7 @@ if __name__ == '__main__':
     args = the_args()
     if any([args.debug, args.dni, args.di, debug_enabled]):
         debug_set = True
-    running_as_root = detect_root()
+    running_as_root = detect_root_user()
     if not running_as_root:
         if debug_set:
             print("DEBUG: You're not running as root")

@@ -42,7 +42,7 @@ smtp_server = "mail.example.com"
 smtp_port = 465
 email_sender = "example@example.com"
 email_destination = ["example@example.com", "example2@example.com"]
-sender_password = "V%gË¼Ïã4pÖtÜãQP;ëÇRÂ«!òeH2øÀbxZ¡ÅT8¿Cï*ðrøkÝ*åÐA]¥R/XZ'¢"
+sender_password = "9b§ì]QîiT{¹5¡/ã¦¥µ+På\yµ'¾SéÉA¸^f|BóÚ{PÙóÕm,öÞÇÙú>:ûK65ÏNö¿^Z8bs"
 cipher_choice = "ECDHE-RSA-AES256-GCM-SHA384"
 login_auth = "LOGIN"
 # TODO: This may be too low, experiment with this
